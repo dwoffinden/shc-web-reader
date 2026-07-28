@@ -1114,7 +1114,7 @@ function addObsRecursive(observations, ref, byId) {
 
   observations.push(o);
 
-  if (o.hasMember && o.hashMember.length) {
+  if (o.hasMember && o.hasMember.length) {
 	for (const i in o.hasMember) {
 	  addObsRecursive(observations, o.hasMember[i], byId);
 	}
