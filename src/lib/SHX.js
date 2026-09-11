@@ -337,7 +337,7 @@ export async function resolveSHL(shl, passcode, resolved) {
 	}
 
 	const shlEncrypted = await fetchSHLContent(shlFiles[i]);
-	const decrypted = await compactDecrypt(shlEncrypted, key);
+	const decrypted = await compactDecrypt(shlEncrypted, key, { inflateRaw });
 	const shlJson = JSON.parse(arr_to_str(decrypted.plaintext));
 
 	if (shlJson.verifiableCredential) {
@@ -536,4 +536,41 @@ function addVerifiableBundle(statusObj, vres) {
   }
 
   return(statusObj);
+}
+
+// 20 MB safety limit to prevent decompression bombs
+export const DEFAULT_MAX_DECOMPRESSED_SIZE = 20 * 1024 * 1024;
+
+// Decompression implementation based directly on upstream jose v6:
+// https://github.com/panva/jose/blob/v6.2.12/src/lib/deflate.ts
+export async function inflateRaw(buffer, maxBytes = DEFAULT_MAX_DECOMPRESSED_SIZE) {
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('DecompressionStream is not supported by your javascript runtime.');
+  }
+
+  const ds = new DecompressionStream('deflate-raw');
+  const writer = ds.writable.getWriter();
+  writer.write(buffer).catch(() => {});
+  writer.close().catch(() => {});
+
+  const chunks = [];
+  let length = 0;
+  const reader = ds.readable.getReader();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    length += value.byteLength;
+    if (length > maxBytes) {
+      throw new Error(`Decompressed payload exceeded safety limit of ${maxBytes} bytes.`);
+    }
+  }
+
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
 }
